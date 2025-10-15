@@ -6,7 +6,7 @@ using System.Drawing.Printing;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace QLNT2
+namespace QLNhaThuoc
 {
     public partial class FormInventoryReport : Form
     {

@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace QLNT2
+namespace QLNhaThuoc
 {
     public class FormWarehouse : Form
     {

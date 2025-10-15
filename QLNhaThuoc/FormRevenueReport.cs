@@ -9,7 +9,7 @@ using System.Linq;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 
-namespace QLNT2
+namespace QLNhaThuoc
 {
     public partial class FormRevenueReport : Form
     {
