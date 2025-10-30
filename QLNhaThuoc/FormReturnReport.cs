@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Configuration;
+using System.Data.SqlClient;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -12,65 +14,17 @@ namespace QLNhaThuoc
 {
     public partial class FormReturnReport : Form
     {
-        // ===== Model cho báo cáo đổi trả =====
+        // ===== Model =====
         public class ReturnRecord
         {
             public DateTime Ngay { get; set; }
             public string MaPhieu { get; set; } = "";
             public string NhaCungCap { get; set; } = "";
-            public string LoaiThuoc { get; set; } = "";     // OTC, Kháng sinh, Dạ dày...
-            public string LyDo { get; set; } = "";          // Hết HSD, Lỗi bao bì, Khác...
+            public string LoaiThuoc { get; set; } = "";
+            public string LyDo { get; set; } = "";
             public int SoMatHang { get; set; }
             public int TongSL { get; set; }
             public decimal TongTien { get; set; }
-        }
-
-        // ===== Seeder dữ liệu giả =====
-        static class FakeReturnData
-        {
-            static readonly Random rnd = new Random(66);
-            static readonly string[] NCCs = { "Dược Hậu Giang", "Pharmacity", "An Khang", "Medigo", "Vimedimex" };
-            static readonly string[] Loai = { "OTC", "Kháng sinh", "Giảm đau", "Dạ dày", "Vitamin" };
-            static readonly string[] LyDo = { "Hết HSD", "Lỗi bao bì", "Giao sai", "Hư hỏng", "Khác" };
-
-            public static BindingList<ReturnRecord> Generate(DateTime start, DateTime end, int count = 220)
-            {
-                var list = new BindingList<ReturnRecord>();
-                int days = Math.Max(1, (int)(end - start).TotalDays);
-
-                for (int i = 0; i < count; i++)
-                {
-                    int off = (rnd.NextDouble() < 0.6) ? rnd.Next(days / 2, days) : rnd.Next(0, days / 2);
-                    DateTime d = start.AddDays(off);
-
-                    string ncc = NCCs[rnd.Next(NCCs.Length)];
-                    string loai = Loai[rnd.Next(Loai.Length)];
-                    string lydo = LyDo[rnd.Next(LyDo.Length)];
-
-                    int soMH = rnd.Next(1, 5);
-                    int tongSL = 0; decimal tong = 0;
-                    for (int j = 0; j < soMH; j++)
-                    {
-                        int sl = rnd.Next(1, 30);
-                        decimal dg = loai is "OTC" or "Vitamin" ? rnd.Next(10000, 90000) : rnd.Next(30000, 220000);
-                        tongSL += sl;
-                        tong += sl * dg * 0.9m; // giá trị hoàn/đổi thường thấp hơn nhập
-                    }
-
-                    list.Add(new ReturnRecord
-                    {
-                        Ngay = d,
-                        MaPhieu = $"PR{d:yyMMdd}-{rnd.Next(100, 999)}",
-                        NhaCungCap = ncc,
-                        LoaiThuoc = loai,
-                        LyDo = lydo,
-                        SoMatHang = soMH,
-                        TongSL = tongSL,
-                        TongTien = Math.Round(tong, 0)
-                    });
-                }
-                return list;
-            }
         }
 
         // ===== UI controls =====
@@ -88,7 +42,7 @@ namespace QLNhaThuoc
 
         readonly Chart chartByNCC = new();
         readonly Chart chartByDate = new();
-        readonly Chart chartPie = new();  // mặc định pie theo Lý do (có thể đổi sang Loại)
+        readonly Chart chartPie = new();
 
         readonly DataGridView dgv = new()
         {
@@ -98,59 +52,95 @@ namespace QLNhaThuoc
             RowHeadersVisible = false
         };
 
-        // ===== Data =====
         BindingList<ReturnRecord> _all = new();
         List<ReturnRecord> _view = new();
 
-        // Minimal InitializeComponent when Designer is absent
         private void InitializeComponent() { }
 
         public FormReturnReport()
         {
             InitializeComponent();
-            Text = "Báo cáo đổi trả hàng";
-            Width = 1200; Height = 760; StartPosition = FormStartPosition.CenterScreen;
+            Text = "Báo cáo đổi trả hàng (SQL)";
+            Width = 1200; Height = 760;
+            StartPosition = FormStartPosition.CenterScreen;
 
             BuildLayout();
             WireEvents();
 
-            // Seed demo
-            dtFrom.Value = DateTime.Today.AddMonths(-2);
+            dtFrom.Value = DateTime.Today.AddMonths(-3);
             dtTo.Value = DateTime.Today;
-            _all = FakeReturnData.Generate(dtFrom.Value.AddMonths(-2), dtTo.Value.AddDays(1));
 
+            LoadFromDatabase();
             LoadFilters();
             ApplyFilter();
+        }
+
+        // ================= LOAD SQL DATA =================
+        void LoadFromDatabase()
+        {
+            try
+            {
+                string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
+                using SqlConnection con = new(cs);
+                con.Open();
+
+                string sql = @"
+                SELECT 
+                    p.MaPhieuTra,
+                    ncc.TenNCC,
+                    dm.TenDanhMuc,
+                    p.LyDoTra,
+                    p.NgayTra,
+                    COUNT(DISTINCT ct.MaThuoc) AS SoMatHang,
+                    SUM(ct.SoLuong) AS TongSL,
+                    SUM(ct.ThanhTien) AS TongTien
+                FROM PhieuTraHang p
+                JOIN NhaCungCap ncc ON p.MaNCC = ncc.MaNCC
+                JOIN ChiTietPhieuTraHang ct ON p.MaPhieuTra = ct.MaPhieuTra
+                JOIN Thuoc t ON ct.MaThuoc = t.MaThuoc
+                JOIN DanhMucThuoc dm ON t.MaDanhMuc = dm.MaDanhMuc
+                GROUP BY p.MaPhieuTra, ncc.TenNCC, dm.TenDanhMuc, p.LyDoTra, p.NgayTra
+                ORDER BY p.NgayTra DESC;";
+
+                using SqlCommand cmd = new(sql, con);
+                using SqlDataReader rd = cmd.ExecuteReader();
+
+                _all.Clear();
+                while (rd.Read())
+                {
+                    _all.Add(new ReturnRecord
+                    {
+                        MaPhieu = rd["MaPhieuTra"].ToString() ?? "",
+                        NhaCungCap = rd["TenNCC"].ToString() ?? "",
+                        LoaiThuoc = rd["TenDanhMuc"].ToString() ?? "",
+                        LyDo = rd["LyDoTra"].ToString() ?? "",
+                        Ngay = rd.GetDateTime(rd.GetOrdinal("NgayTra")),
+                        SoMatHang = Convert.ToInt32(rd["SoMatHang"]),
+                        TongSL = Convert.ToInt32(rd["TongSL"]),
+                        TongTien = Convert.ToDecimal(rd["TongTien"])
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("❌ Lỗi tải dữ liệu đổi trả: " + ex.Message,
+                    "Lỗi SQL", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         // ================= LAYOUT =================
         void BuildLayout()
         {
             SuspendLayout();
-            AutoScaleMode = AutoScaleMode.Dpi;
-            DoubleBuffered = true;
 
-            var root = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 3,
-                Padding = new Padding(8),
-                GrowStyle = TableLayoutPanelGrowStyle.FixedSize
-            };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 300)); // Charts
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // Filters
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // Grid
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(8) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 300));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
             // Charts row
-            var charts = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 3,
-                RowCount = 1,
-                Margin = new Padding(0, 0, 0, 8)
-            };
+            var charts = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1 };
             charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
             charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
             charts.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
@@ -164,75 +154,44 @@ namespace QLNhaThuoc
             charts.Controls.Add(chartPie, 2, 0);
             root.Controls.Add(charts, 0, 0);
 
-            // Filters row (2 hàng, 7 cột) - improved layout with labels to the right of inputs and fixed sizes
-            var filters = new TableLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                ColumnCount = 7,
-                RowCount = 2,
-                Margin = new Padding(0, 0, 0, 8),
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
-            };
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // label
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160)); // input
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // label
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); // input
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // label
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160)); // input
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // buttons area
-            filters.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            filters.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            // Filters
+            var filters = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 7, RowCount = 2, AutoSize = true };
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-            // Row 0
-            var lblFrom = new Label { Text = "Từ ngày", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            dtFrom.Width = 140; dtFrom.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblFrom, 0, 0);
-            filters.Controls.Add(dtFrom, 1, 0);
+            AddFilter(filters, "Từ ngày", dtFrom, 0, 0);
+            AddFilter(filters, "Đến ngày", dtTo, 2, 0);
+            AddFilter(filters, "Nhà cung cấp", cboNCC, 4, 0);
+            AddFilter(filters, "Loại thuốc", cboLoai, 0, 1);
+            AddFilter(filters, "Lý do", cboLyDo, 2, 1);
+            AddFilter(filters, "Giá trị từ (₫)", numMin, 4, 1);
 
-            var lblTo = new Label { Text = "Đến ngày", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            dtTo.Width = 140; dtTo.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblTo, 2, 0);
-            filters.Controls.Add(dtTo, 3, 0);
-
-            var lblNcc = new Label { Text = "Nhà cung cấp", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            cboNCC.Width = 160; cboNCC.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblNcc, 4, 0);
-            filters.Controls.Add(cboNCC, 5, 0);
-
-            // Row 1
-            var lblLoai = new Label { Text = "Loại thuốc", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            cboLoai.Width = 160; cboLoai.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblLoai, 0, 1);
-            filters.Controls.Add(cboLoai, 1, 1);
-
-            var lblLyDo = new Label { Text = "Lý do đổi trả", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            cboLyDo.Width = 160; cboLyDo.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblLyDo, 2, 1);
-            filters.Controls.Add(cboLyDo, 3, 1);
-
-            var lblMin = new Label { Text = "Giá trị từ (₫)", Anchor = AnchorStyles.Right, AutoSize = false, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
-            numMin.Width = 120; numMin.Margin = new Padding(6, 4, 12, 4);
-            filters.Controls.Add(lblMin, 4, 1);
-            filters.Controls.Add(numMin, 5, 1);
-
-            // Buttons panel (right-aligned) in column 6 spanning 2 rows
-            var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, AutoSize = true };
-            btnFilter.Size = new Size(90, 30); btnReset.Size = new Size(90, 30); btnExport.Size = new Size(90, 30);
-            btnPanel.Controls.Add(btnExport); btnPanel.Controls.Add(btnReset); btnPanel.Controls.Add(btnFilter);
+            var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
+            btnPanel.Controls.AddRange(new Control[] { btnExport, btnReset, btnFilter });
             filters.SetRowSpan(btnPanel, 2);
             filters.Controls.Add(btnPanel, 6, 0);
 
             root.Controls.Add(filters, 0, 1);
 
-            // Grid row
+            // Grid
             dgv.EnableHeadersVisualStyles = false;
-            dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-            dgv.ColumnHeadersHeight = 34;
             root.Controls.Add(dgv, 0, 2);
 
             ResumeLayout();
+        }
+
+        static void AddFilter(TableLayoutPanel host, string label, Control control, int col, int row)
+        {
+            var lbl = new Label { Text = label, Anchor = AnchorStyles.Right, TextAlign = ContentAlignment.MiddleRight, Width = 100 };
+            control.Width = 150;
+            host.Controls.Add(lbl, col, row);
+            host.Controls.Add(control, col + 1, row);
         }
 
         static void SetupChart(Chart c, string title, SeriesChartType type)
@@ -243,10 +202,8 @@ namespace QLNhaThuoc
             ca.AxisX.MajorGrid.Enabled = false;
             ca.AxisY.MajorGrid.LineColor = Color.Gainsboro;
             c.ChartAreas.Add(ca);
-            c.Titles.Clear();
             c.Titles.Add(title);
-            c.Series.Clear();
-            var s = new Series("S") { ChartType = type, XValueType = ChartValueType.String, YValueType = ChartValueType.Double };
+            var s = new Series("S") { ChartType = type };
             if (type == SeriesChartType.Line) s.BorderWidth = 3;
             if (type == SeriesChartType.Pie)
             {
@@ -256,18 +213,7 @@ namespace QLNhaThuoc
             c.Series.Add(s);
         }
 
-        static void AddLabeled(TableLayoutPanel host, int col, int row, string text, Control input)
-        {
-            var lbl = new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 6, 0) };
-            input.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            input.Margin = new Padding(0, 0, 12, 6);
-            host.SetColumnSpan(lbl, 2);
-            host.SetColumnSpan(input, 2);
-            host.Controls.Add(lbl, col, row);
-            host.Controls.Add(input, col + 2, row);
-        }
-        // ================= END LAYOUT =================
-
+        // ================= FILTERS =================
         void WireEvents()
         {
             btnFilter.Click += (_, __) => ApplyFilter();
@@ -277,17 +223,14 @@ namespace QLNhaThuoc
 
         void LoadFilters()
         {
-            // NCC
             var ncc = _all.Select(x => x.NhaCungCap).Distinct().OrderBy(x => x).ToList();
             ncc.Insert(0, "(Tất cả)");
             cboNCC.DataSource = ncc;
 
-            // Loại
             var loai = _all.Select(x => x.LoaiThuoc).Distinct().OrderBy(x => x).ToList();
             loai.Insert(0, "(Tất cả)");
             cboLoai.DataSource = loai;
 
-            // Lý do
             var lydo = _all.Select(x => x.LyDo).Distinct().OrderBy(x => x).ToList();
             lydo.Insert(0, "(Tất cả)");
             cboLyDo.DataSource = lydo;
@@ -295,21 +238,23 @@ namespace QLNhaThuoc
 
         void ResetFilter()
         {
-            dtFrom.Value = _all.Min(x => x.Ngay).Date;
-            dtTo.Value = _all.Max(x => x.Ngay).Date;
+            dtFrom.Value = _all.Min(x => x.Ngay);
+            dtTo.Value = _all.Max(x => x.Ngay);
             cboNCC.SelectedIndex = 0;
             cboLoai.SelectedIndex = 0;
             cboLyDo.SelectedIndex = 0;
-            numMin.Value = 0; numMax.Value = 0;
+            numMin.Value = 0;
+            numMax.Value = 0;
         }
 
+        // ================= APPLY FILTER =================
         void ApplyFilter()
         {
             DateTime from = dtFrom.Value.Date;
             DateTime to = dtTo.Value.Date.AddDays(1);
-            string ncc = cboNCC.SelectedItem?.ToString() ?? "(Tất cả)";
-            string loai = cboLoai.SelectedItem?.ToString() ?? "(Tất cả)";
-            string lydo = cboLyDo.SelectedItem?.ToString() ?? "(Tất cả)";
+            string ncc = cboNCC.Text;
+            string loai = cboLoai.Text;
+            string lydo = cboLyDo.Text;
             decimal min = numMin.Value;
             decimal max = numMax.Value;
 
@@ -320,14 +265,13 @@ namespace QLNhaThuoc
             if (min > 0) q = q.Where(x => x.TongTien >= min);
             if (max > 0) q = q.Where(x => x.TongTien <= max);
 
-            _view = q.OrderByDescending(x => x.Ngay).ThenByDescending(x => x.TongTien).ToList();
+            _view = q.OrderByDescending(x => x.Ngay).ToList();
 
-            // Bảng chi tiết
             dgv.DataSource = null;
             dgv.Columns.Clear();
             dgv.DataSource = _view;
 
-            dgv.Columns[nameof(ReturnRecord.Ngay)].HeaderText = "Ngày";
+            dgv.Columns[nameof(ReturnRecord.Ngay)].HeaderText = "Ngày trả";
             dgv.Columns[nameof(ReturnRecord.MaPhieu)].HeaderText = "Mã phiếu";
             dgv.Columns[nameof(ReturnRecord.NhaCungCap)].HeaderText = "Nhà cung cấp";
             dgv.Columns[nameof(ReturnRecord.LoaiThuoc)].HeaderText = "Loại thuốc";
@@ -335,32 +279,27 @@ namespace QLNhaThuoc
             dgv.Columns[nameof(ReturnRecord.SoMatHang)].HeaderText = "Số mặt hàng";
             dgv.Columns[nameof(ReturnRecord.TongSL)].HeaderText = "Số lượng";
             dgv.Columns[nameof(ReturnRecord.TongTien)].HeaderText = "Tổng tiền (₫)";
-
             dgv.Columns[nameof(ReturnRecord.Ngay)].DefaultCellStyle.Format = "dd/MM/yyyy";
             dgv.Columns[nameof(ReturnRecord.TongTien)].DefaultCellStyle.Format = "N0";
 
-            // Biểu đồ
             UpdateCharts();
         }
 
+        // ================= CHARTS =================
         void UpdateCharts()
         {
-            // 1) Theo NCC
             var byNcc = _view.GroupBy(x => x.NhaCungCap)
                              .Select(g => new { NCC = g.Key, Sum = g.Sum(x => x.TongTien) })
                              .OrderByDescending(x => x.Sum).ToList();
             chartByNCC.Series["S"].Points.Clear();
             foreach (var i in byNcc) chartByNCC.Series["S"].Points.AddXY(i.NCC, (double)i.Sum);
-            chartByNCC.ChartAreas[0].AxisX.Interval = 1;
 
-            // 2) Theo ngày
             var byDate = _view.GroupBy(x => x.Ngay.Date)
                               .Select(g => new { D = g.Key, Sum = g.Sum(x => x.TongTien) })
                               .OrderBy(x => x.D).ToList();
             chartByDate.Series["S"].Points.Clear();
             foreach (var i in byDate) chartByDate.Series["S"].Points.AddXY(i.D.ToString("dd/MM"), (double)i.Sum);
 
-            // 3) Pie theo Lý do (có thể đổi sang LoạiThuoc nếu thích)
             var byReason = _view.GroupBy(x => x.LyDo)
                                 .Select(g => new { LyDo = g.Key, Sum = g.Sum(x => x.TongTien) })
                                 .OrderByDescending(x => x.Sum).ToList();
@@ -368,12 +307,12 @@ namespace QLNhaThuoc
             foreach (var i in byReason)
             {
                 int idx = chartPie.Series["S"].Points.AddY((double)i.Sum);
-                var p = chartPie.Series["S"].Points[idx];
-                p.LegendText = i.LyDo;
-                p.Label = string.Format("{0}\n{1:N0} ₫", i.LyDo, i.Sum);
+                chartPie.Series["S"].Points[idx].LegendText = i.LyDo;
+                chartPie.Series["S"].Points[idx].Label = $"{i.LyDo}\n{i.Sum:N0} ₫";
             }
         }
 
+        // ================= EXPORT =================
         void ExportCsv()
         {
             if (_view.Count == 0) { MessageBox.Show("Không có dữ liệu để xuất."); return; }
@@ -383,9 +322,8 @@ namespace QLNhaThuoc
                 using var sw = new StreamWriter(sfd.FileName);
                 sw.WriteLine("Ngay,MaPhieu,NhaCungCap,LoaiThuoc,LyDo,SoMatHang,TongSL,TongTien");
                 foreach (var x in _view)
-                    sw.WriteLine($"{x.Ngay:yyyy-MM-dd},{x.MaPhieu},{x.NhaCungCap},{x.LoaiThuoc},{x.LyDo},{x.SoMatHang},{x.TongSL},{x.TongTien.ToString(CultureInfo.InvariantCulture)}");
-                sw.Flush();
-                MessageBox.Show("Xuất CSV thành công!");
+                    sw.WriteLine($"{x.Ngay:yyyy-MM-dd},{x.MaPhieu},{x.NhaCungCap},{x.LoaiThuoc},{x.LyDo},{x.SoMatHang},{x.TongSL},{x.TongTien}");
+                MessageBox.Show("✅ Xuất CSV thành công!");
             }
         }
     }

@@ -2,8 +2,8 @@
 using DevExpress.Skins;
 using DevExpress.UserSkins;
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Configuration;
+using System.Data.SqlClient;
 using System.Windows.Forms;
 
 namespace QLNhaThuoc
@@ -18,7 +18,27 @@ namespace QLNhaThuoc
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new FormRevenueReport());
+
+            // ======== 🔍 KIỂM TRA KẾT NỐI SQL SERVER TRƯỚC ========
+            try
+            {
+                string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
+                using (SqlConnection con = new SqlConnection(cs))
+                {
+                    con.Open();
+                    MessageBox.Show("✅ Kết nối SQL Server thành công!",
+                        "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("❌ Lỗi kết nối SQL Server:\n" + ex.Message,
+                    "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return; // Dừng chương trình nếu lỗi
+            }
+
+            // ======== 🚀 CHẠY FORM CHÍNH SAU KHI KẾT NỐI OK ========
+            Application.Run(new FormWarehouse());
         }
     }
 }

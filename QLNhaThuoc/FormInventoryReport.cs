@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Configuration;
+using System.Data.SqlClient;
 using System.Drawing;
 using System.Drawing.Printing;
 using System.Linq;
@@ -11,448 +13,296 @@ namespace QLNhaThuoc
     public partial class FormInventoryReport : Form
     {
         // ===================== Models =====================
-        public class Category
-        {
-            public string CatId { get; set; } = "";
-            public string Name { get; set; } = "";
-        }
-
         public class ProductStock
         {
-            public string ProdId { get; set; } = "";
-            public string Name { get; set; } = "";
-            public string CatId { get; set; } = "";
-            public string CatName { get; set; } = "";
-            public int Qty { get; set; }             // Tồn thực tế
-            public int MinStock { get; set; }             // Ngưỡng sắp hết hàng
-            public DateTime Expiry { get; set; }             // Hạn dùng gần nhất
-            public int DaysLeft => (int)Math.Ceiling((Expiry.Date - DateTime.Today).TotalDays);
-            public bool IsExpiringSoon(int daysThreshold) => DaysLeft <= daysThreshold;
-            public bool IsLowStock() => Qty <= MinStock;
-        }
+            public string MaThuoc { get; set; } = "";
+            public string TenThuoc { get; set; } = "";
+            public string MaDanhMuc { get; set; } = "";
+            public string TenDanhMuc { get; set; } = "";
+            public int TonKho { get; set; }
+            public int NguongToiThieu { get; set; } = 20; // quy định ngưỡng cảnh báo
+            public DateTime HanSuDung { get; set; }
 
-        // ===================== Fake data =====================
-        static class InventorySeeder
-        {
-            static readonly Random rnd = new Random(77);
-            static readonly (string id, string name)[] CATS = new[]
-            {
-                ("OTC", "Thuốc OTC"),
-                ("KS",  "Kháng sinh"),
-                ("DD",  "Dạ dày - Tiêu hoá"),
-                ("VT",  "Vitamin - Khoáng"),
-                ("GY",  "Giảm đau - Hạ sốt")
-            };
-
-            static readonly string[] OTC = { "Salonpas Patch", "ORS Gói", "Tiffy", "Decolgen", "Cough Syrup 60ml" };
-            static readonly string[] KS = { "Amoxicillin 500mg", "Cefalexin 500mg", "Azithromycin 250mg", "Ciprofloxacin 500mg" };
-            static readonly string[] DD = { "Omeprazol 20mg", "Esomeprazole 40mg", "Antacid Tums", "Smecta", "Domperidone 10mg" };
-            static readonly string[] VT = { "Vitamin C 1000mg", "Magie B6", "D3K2", "Zinc 15mg", "Multivitamin ABC" };
-            static readonly string[] GY = { "Paracetamol 500mg", "Ibuprofen 400mg", "Meloxicam 7.5mg", "Naproxen 250mg" };
-
-            public static (List<Category> cats, BindingList<ProductStock> products) Generate(int countPerCat = 18)
-            {
-                var cats = CATS.Select(c => new Category { CatId = c.id, Name = c.name }).ToList();
-                var list = new BindingList<ProductStock>();
-
-                foreach (var c in cats)
-                {
-                    string[] pool = c.CatId switch
-                    {
-                        "OTC" => OTC,
-                        "KS" => KS,
-                        "DD" => DD,
-                        "VT" => VT,
-                        _ => GY
-                    };
-
-                    for (int i = 0; i < countPerCat; i++)
-                    {
-                        string name = pool[rnd.Next(pool.Length)];
-                        int qty = rnd.Next(0, 250);                 // có thể 0 để test hết hàng
-                        int min = rnd.Next(10, 60);
-                        // 25% gần hết hạn (<= 30 ngày), 8% đã hết hạn
-                        int days = rnd.NextDouble() < 0.08 ? -rnd.Next(1, 15)
-                                  : (rnd.NextDouble() < 0.25 ? rnd.Next(0, 30) : rnd.Next(31, 540));
-                        DateTime exp = DateTime.Today.AddDays(days);
-
-                        list.Add(new ProductStock
-                        {
-                            ProdId = $"{c.CatId}-{i:000}",
-                            Name = name,
-                            CatId = c.CatId,
-                            CatName = c.Name,
-                            Qty = qty,
-                            MinStock = min,
-                            Expiry = exp
-                        });
-                    }
-                }
-                return (cats, list);
-            }
+            public int ConLai => (int)Math.Ceiling((HanSuDung.Date - DateTime.Today).TotalDays);
+            public bool SapHetHan(int nguongNgay) => ConLai <= nguongNgay;
+            public bool SapHetHang() => TonKho <= NguongToiThieu;
         }
 
         // ===================== UI controls =====================
-        readonly ComboBox cboCategory = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-        readonly NumericUpDown numDaysThreshold = new() { Minimum = 1, Maximum = 365, Value = 30, Width = 60 };
-        readonly Button btnFilter = new() { Text = "Lọc dữ liệu", AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
-        readonly Button btnReset = new() { Text = "Xóa lọc", AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
-        readonly Button btnPrint = new() { Text = "In báo cáo", AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
+        readonly ComboBox cboDanhMuc = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+        readonly NumericUpDown numNgay = new() { Minimum = 1, Maximum = 365, Value = 30, Width = 60 };
+        readonly Button btnLoc = new() { Text = "Lọc dữ liệu", AutoSize = true };
+        readonly Button btnXoa = new() { Text = "Xóa lọc", AutoSize = true };
+        readonly Button btnIn = new() { Text = "In báo cáo", AutoSize = true };
 
-        readonly DataGridView dgvCatSummary = new()
-        {
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false
-        };
+        readonly DataGridView dgvTongHop = new() { Dock = DockStyle.Fill, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+        readonly DataGridView dgvChiTiet = new() { Dock = DockStyle.Fill, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+        readonly DataGridView dgvHetHan = new() { Dock = DockStyle.Fill, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
+        readonly DataGridView dgvHetHang = new() { Dock = DockStyle.Fill, ReadOnly = true, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill };
 
-        readonly DataGridView dgvDetails = new()
-        {
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false
-        };
-
-        readonly DataGridView dgvExpiringSoon = new()
-        {
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false
-        };
-
-        readonly DataGridView dgvLowStock = new()
-        {
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-            RowHeadersVisible = false
-        };
-
-        // Icons
         readonly Bitmap iconWarn = SystemIcons.Warning.ToBitmap();
         readonly Bitmap iconStop = SystemIcons.Error.ToBitmap();
 
-        // ===================== Data =====================
-        List<Category> _cats = new();
-        BindingList<ProductStock> _all = new();
+        List<ProductStock> _all = new();
         List<ProductStock> _view = new();
-        int ExpiringDaysThreshold => (int)numDaysThreshold.Value;
+        int NguongHetHan => (int)numNgay.Value;
 
-        // Print
         PrintDocument printDoc = new();
 
-        // Minimal InitializeComponent when designer not present
         private void InitializeComponent() { }
 
         public FormInventoryReport()
         {
             InitializeComponent();
-            Text = "Báo cáo tồn kho";
-            Width = 1300; Height = 820; StartPosition = FormStartPosition.CenterScreen;
-            // Open maximized by default for better visibility
+            Text = "Báo cáo tồn kho (Dữ liệu thật)";
+            Width = 1300; Height = 820;
+            StartPosition = FormStartPosition.CenterScreen;
             WindowState = FormWindowState.Maximized;
 
             BuildLayout();
             WireEvents();
-
-            // Seed
-            (_cats, _all) = InventorySeeder.Generate(16);
-
-            // Filters
-            var catNames = _cats.Select(c => c.Name).OrderBy(x => x).ToList();
-            catNames.Insert(0, "(Tất cả)");
-            cboCategory.DataSource = catNames;
-
+            LoadDataFromDatabase();
             ApplyFilter();
         }
 
-        // ===================== Layout =====================
+        // ======================================================
+        // 🔹 LOAD DỮ LIỆU TỪ SQL
+        // ======================================================
+        void LoadDataFromDatabase()
+        {
+            try
+            {
+                string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
+                using SqlConnection con = new(cs);
+                con.Open();
+
+                string sql = @"
+                    SELECT 
+                        t.MaThuoc,
+                        t.TenThuoc,
+                        dm.MaDanhMuc,
+                        dm.TenDanhMuc,
+                        tk.TonKho,
+                        tk.HanSuDung
+                    FROM Thuoc t
+                    JOIN DanhMucThuoc dm ON t.MaDanhMuc = dm.MaDanhMuc
+                    JOIN TonKho tk ON t.MaThuoc = tk.MaThuoc
+                    ORDER BY dm.TenDanhMuc, t.TenThuoc;";
+
+                using SqlCommand cmd = new(sql, con);
+                using SqlDataReader rd = cmd.ExecuteReader();
+
+                _all.Clear();
+                while (rd.Read())
+                {
+                    _all.Add(new ProductStock
+                    {
+                        MaThuoc = rd.GetString(0),
+                        TenThuoc = rd.GetString(1),
+                        MaDanhMuc = rd.GetString(2),
+                        TenDanhMuc = rd.GetString(3),
+                        TonKho = rd.IsDBNull(4) ? 0 : rd.GetInt32(4),
+                        HanSuDung = rd.IsDBNull(5) ? DateTime.Today.AddMonths(6) : rd.GetDateTime(5)
+                    });
+                }
+
+                var dm = _all.Select(x => x.TenDanhMuc).Distinct().OrderBy(x => x).ToList();
+                dm.Insert(0, "(Tất cả)");
+                cboDanhMuc.DataSource = dm;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("❌ Lỗi tải dữ liệu từ SQL: " + ex.Message,
+                    "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ======================================================
+        // 🔹 LAYOUT
+        // ======================================================
         void BuildLayout()
         {
             SuspendLayout();
-            AutoScaleMode = AutoScaleMode.Dpi;
-            DoubleBuffered = true;
 
             var root = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 1,
                 RowCount = 3,
-                Padding = new Padding(8),
-                GrowStyle = TableLayoutPanelGrowStyle.FixedSize
+                ColumnCount = 1,
+                Padding = new Padding(8)
             };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // filters
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));   // top split (summary + details)
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));   // bottom tabs
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
             Controls.Add(root);
 
-            // Filters
-            var filters = new TableLayoutPanel
+            // Bộ lọc
+            var filters = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
-                ColumnCount = 12,
-                RowCount = 1,
-                Margin = new Padding(0, 0, 0, 8),
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink
+                AutoSize = true
             };
-            for (int i = 0; i < 12; i++) filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 12f));
+            filters.Controls.Add(new Label { Text = "Danh mục:", AutoSize = true, Margin = new Padding(4, 8, 4, 0) });
+            filters.Controls.Add(cboDanhMuc);
+            filters.Controls.Add(new Label { Text = "Sắp hết hạn ≤ (ngày):", AutoSize = true, Margin = new Padding(12, 8, 4, 0) });
+            filters.Controls.Add(numNgay);
+            filters.Controls.Add(btnLoc);
+            filters.Controls.Add(btnXoa);
+            filters.Controls.Add(btnIn);
+            root.Controls.Add(filters);
 
-            AddLabeled(filters, 0, "Danh mục", cboCategory);
-            AddLabeled(filters, 4, "Sắp hết hạn ≤ (ngày)", numDaysThreshold);
+            // Khu vực trên: tổng hợp + chi tiết
+            var topSplit = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Vertical, SplitterDistance = 400 };
+            topSplit.Panel1.Controls.Add(dgvTongHop);
+            topSplit.Panel2.Controls.Add(dgvChiTiet);
+            root.Controls.Add(topSplit);
 
-            var btns = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.RightToLeft,
-                WrapContents = false,
-                AutoSize = true,
-                AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                Padding = new Padding(0)
-            };
-            // Add some gap so buttons show fully
-            btns.Controls.Add(btnPrint);
-            btns.Controls.Add(btnReset);
-            btns.Controls.Add(btnFilter);
-            filters.SetColumnSpan(btns, 4);
-            filters.Controls.Add(btns, 8, 0);
-
-            root.Controls.Add(filters, 0, 0);
-
-            // Top: split summary + detail
-            var topSplit = new SplitContainer
-            {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical,
-                SplitterDistance = 420
-            };
-            // Summary grid
-            dgvCatSummary.EnableHeadersVisualStyles = false;
-            dgvCatSummary.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
-            dgvCatSummary.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-            topSplit.Panel1.Padding = new Padding(0, 0, 8, 0);
-            topSplit.Panel1.Controls.Add(dgvCatSummary);
-
-            // Details grid
-            dgvDetails.EnableHeadersVisualStyles = false;
-            dgvDetails.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 245, 245);
-            dgvDetails.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9, FontStyle.Bold);
-            topSplit.Panel2.Controls.Add(dgvDetails);
-
-            root.Controls.Add(topSplit, 0, 1);
-
-            // Bottom: tabs (Expiring soon / Low stock)
+            // Tab dưới: sắp hết hạn / sắp hết hàng
             var tabs = new TabControl { Dock = DockStyle.Fill };
             var tp1 = new TabPage("Thuốc sắp hết hạn") { Padding = new Padding(6) };
             var tp2 = new TabPage("Thuốc sắp hết hàng") { Padding = new Padding(6) };
-            tp1.Controls.Add(dgvExpiringSoon);
-            tp2.Controls.Add(dgvLowStock);
+            tp1.Controls.Add(dgvHetHan);
+            tp2.Controls.Add(dgvHetHang);
             tabs.TabPages.Add(tp1);
             tabs.TabPages.Add(tp2);
-            root.Controls.Add(tabs, 0, 2);
+            root.Controls.Add(tabs);
 
             ResumeLayout();
         }
 
-        void AddLabeled(TableLayoutPanel host, int colStart, string text, Control input)
-        {
-            var lbl = new Label { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 6, 6, 0) };
-            input.Anchor = AnchorStyles.Left | AnchorStyles.Right;
-            input.Margin = new Padding(0, 0, 12, 6);
-
-            host.SetColumnSpan(lbl, 2);
-            host.SetColumnSpan(input, 2);
-            host.Controls.Add(lbl, colStart, 0);
-            host.Controls.Add(input, colStart + 2, 0);
-        }
-
-        // ===================== Behavior =====================
+        // ======================================================
+        // 🔹 SỰ KIỆN
+        // ======================================================
         void WireEvents()
         {
-            btnFilter.Click += (_, __) => ApplyFilter();
-            btnReset.Click += (_, __) => { cboCategory.SelectedIndex = 0; numDaysThreshold.Value = 30; ApplyFilter(); };
-            btnPrint.Click += (_, __) => PrintPreview();
-
-            // click chọn danh mục để lọc chi tiết
-            dgvCatSummary.SelectionChanged += (_, __) =>
+            btnLoc.Click += (_, __) => ApplyFilter();
+            btnXoa.Click += (_, __) =>
             {
-                if (dgvCatSummary.CurrentRow?.DataBoundItem is CatSummaryRow r)
-                    FilterDetailsByCategory(r.CatName);
+                cboDanhMuc.SelectedIndex = 0;
+                numNgay.Value = 30;
+                ApplyFilter();
+            };
+            btnIn.Click += (_, __) => PrintPreview();
+
+            dgvTongHop.SelectionChanged += (_, __) =>
+            {
+                if (dgvTongHop.CurrentRow?.DataBoundItem is CatSummaryRow row)
+                    FilterDetails(row.TenDanhMuc);
             };
         }
 
+        // ======================================================
+        // 🔹 ÁP DỤNG LỌC DỮ LIỆU
+        // ======================================================
         void ApplyFilter()
         {
-            string cat = cboCategory.SelectedItem?.ToString() ?? "(Tất cả)";
+            string dm = cboDanhMuc.SelectedItem?.ToString() ?? "(Tất cả)";
             var q = _all.AsEnumerable();
-            if (cat != "(Tất cả)") q = q.Where(p => p.CatName == cat);
+            if (dm != "(Tất cả)") q = q.Where(x => x.TenDanhMuc == dm);
 
-            _view = q.OrderBy(p => p.CatName).ThenBy(p => p.Name).ToList();
+            _view = q.OrderBy(x => x.TenDanhMuc).ThenBy(x => x.TenThuoc).ToList();
 
-            BindSummaryGrid();
-            FilterDetailsByCategory(cat == "(Tất cả)" ? null : cat);
+            BindSummary();
+            FilterDetails(dm == "(Tất cả)" ? null : dm);
             BindExtraTables();
         }
 
-        // ------- Summary table -------
+        // ======================================================
+        // 🔹 TỔNG HỢP DANH MỤC
+        // ======================================================
         class CatSummaryRow
         {
-            public string CatName { get; set; } = "";
-            public int SoSanPham { get; set; }
+            public string TenDanhMuc { get; set; } = "";
+            public int SoThuoc { get; set; }
             public int TongTon { get; set; }
             public int SapHetHan { get; set; }
             public int SapHetHang { get; set; }
         }
 
-        void BindSummaryGrid()
+        void BindSummary()
         {
-            int threshold = ExpiringDaysThreshold;
+            int threshold = NguongHetHan;
 
-            var rows = _view.GroupBy(p => p.CatName)
+            var rows = _view.GroupBy(x => x.TenDanhMuc)
                             .Select(g => new CatSummaryRow
                             {
-                                CatName = g.Key,
-                                SoSanPham = g.Count(),
-                                TongTon = g.Sum(x => x.Qty),
-                                SapHetHan = g.Count(x => x.IsExpiringSoon(threshold)),
-                                SapHetHang = g.Count(x => x.IsLowStock())
-                            })
-                            .OrderBy(x => x.CatName)
-                            .ToList();
+                                TenDanhMuc = g.Key,
+                                SoThuoc = g.Count(),
+                                TongTon = g.Sum(x => x.TonKho),
+                                SapHetHan = g.Count(x => x.SapHetHan(threshold)),
+                                SapHetHang = g.Count(x => x.SapHetHang())
+                            }).OrderBy(x => x.TenDanhMuc).ToList();
 
-            dgvCatSummary.DataSource = null;
-            dgvCatSummary.Columns.Clear();
-            dgvCatSummary.DataSource = rows;
-
-            dgvCatSummary.Columns[nameof(CatSummaryRow.CatName)].HeaderText = "Danh mục";
-            dgvCatSummary.Columns[nameof(CatSummaryRow.SoSanPham)].HeaderText = "Số SP";
-            dgvCatSummary.Columns[nameof(CatSummaryRow.TongTon)].HeaderText = "Tổng tồn";
-            dgvCatSummary.Columns[nameof(CatSummaryRow.SapHetHan)].HeaderText = "Sắp hết hạn";
-            dgvCatSummary.Columns[nameof(CatSummaryRow.SapHetHang)].HeaderText = "Sắp hết hàng";
+            dgvTongHop.DataSource = null;
+            dgvTongHop.Columns.Clear();
+            dgvTongHop.DataSource = rows;
         }
 
-        // ------- Details with warning icons -------
-        void FilterDetailsByCategory(string? catName)
+        // ======================================================
+        // 🔹 CHI TIẾT THUỐC
+        // ======================================================
+        void FilterDetails(string? dm)
         {
-            var data = string.IsNullOrEmpty(catName) ? _view : _view.Where(p => p.CatName == catName).ToList();
+            var data = string.IsNullOrEmpty(dm) ? _view : _view.Where(x => x.TenDanhMuc == dm).ToList();
 
-            dgvDetails.DataSource = null;
-            dgvDetails.Columns.Clear();
-            dgvDetails.AutoGenerateColumns = false;
+            dgvChiTiet.DataSource = null;
+            dgvChiTiet.Columns.Clear();
 
-            // Warning column
-            var colIcon = new DataGridViewImageColumn
-            {
-                HeaderText = "",
-                Width = 28,
-                ImageLayout = DataGridViewImageCellLayout.Zoom,
-                ValueType = typeof(Image)
-            };
-            // Ensure nulls don't attempt formatting
-            colIcon.DefaultCellStyle.NullValue = null;
-            dgvDetails.Columns.Add(colIcon);
+            var iconCol = new DataGridViewImageColumn { HeaderText = "", Width = 28, ImageLayout = DataGridViewImageCellLayout.Zoom };
+            dgvChiTiet.Columns.Add(iconCol);
+            dgvChiTiet.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.TenThuoc), HeaderText = "Tên thuốc" });
+            dgvChiTiet.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.TenDanhMuc), HeaderText = "Danh mục" });
+            dgvChiTiet.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.TonKho), HeaderText = "Tồn" });
+            dgvChiTiet.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.NguongToiThieu), HeaderText = "Ngưỡng" });
+            var colHD = new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.HanSuDung), HeaderText = "Hạn dùng" };
+            colHD.DefaultCellStyle.Format = "dd/MM/yyyy";
+            dgvChiTiet.Columns.Add(colHD);
+            dgvChiTiet.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.ConLai), HeaderText = "Còn (ngày)" });
 
-            dgvDetails.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.Name), HeaderText = "Thuốc" });
-            dgvDetails.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.CatName), HeaderText = "Danh mục" });
-            dgvDetails.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.Qty), HeaderText = "Tồn" });
-            dgvDetails.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.MinStock), HeaderText = "Ngưỡng" });
-            var colExpiry = new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.Expiry), HeaderText = "Hạn dùng" };
-            colExpiry.DefaultCellStyle.Format = "dd/MM/yyyy";
-            colExpiry.ValueType = typeof(DateTime);
-            dgvDetails.Columns.Add(colExpiry);
-            dgvDetails.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = nameof(ProductStock.DaysLeft), HeaderText = "Còn (ngày)" });
-
-            // Ensure single handler for formatting
-            dgvDetails.CellFormatting -= DgvDetails_CellFormatting;
-            dgvDetails.CellFormatting += DgvDetails_CellFormatting;
-
-            // Handle DataError to suppress default dialog when cell formatting types mismatch
-            dgvDetails.DataError -= DgvDetails_DataError;
-            dgvDetails.DataError += DgvDetails_DataError;
-
-            dgvDetails.DataSource = new BindingList<ProductStock>(data);
+            dgvChiTiet.DataSource = new BindingList<ProductStock>(data);
+            dgvChiTiet.CellFormatting += DgvChiTiet_CellFormatting;
         }
 
-        private void DgvDetails_DataError(object? sender, DataGridViewDataErrorEventArgs e)
-        {
-            // Prevent the default DataGridView error dialog from showing.
-            // Swallow formatting exceptions that can occur when temporarily assigning image values.
-            e.ThrowException = false;
-        }
-
-        private void DgvDetails_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+        void DgvChiTiet_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
         {
             if (e.RowIndex < 0) return;
-            var dgv = sender as DataGridView;
-            if (dgv == null) return;
+            if (e.ColumnIndex != 0) return;
 
-            // Icon column
-            if (e.ColumnIndex == 0)
+            if (dgvChiTiet.Rows[e.RowIndex].DataBoundItem is ProductStock p)
             {
-                if (dgv.Rows[e.RowIndex].DataBoundItem is ProductStock item)
-                {
-                    if (item.IsLowStock()) e.Value = iconStop;
-                    else if (item.IsExpiringSoon(ExpiringDaysThreshold)) e.Value = iconWarn;
-                    else e.Value = null;
-                    e.FormattingApplied = true;
-                }
-                return;
+                if (p.SapHetHang()) e.Value = iconStop;
+                else if (p.SapHetHan(NguongHetHan)) e.Value = iconWarn;
+                else e.Value = null;
+                e.FormattingApplied = true;
             }
-
-            // Expiry formatted by DefaultCellStyle; nothing else needed here
         }
 
+        // ======================================================
+        // 🔹 BẢNG CẢNH BÁO
+        // ======================================================
         void BindExtraTables()
         {
-            int threshold = ExpiringDaysThreshold;
+            int threshold = NguongHetHan;
 
-            // Expiring soon
-            var exp = _view.Where(p => p.IsExpiringSoon(threshold))
-                           .OrderBy(p => p.DaysLeft)
-                           .Select(p => new
-                           {
-                               Thuoc = p.Name,
-                               DanhMuc = p.CatName,
-                               HanDung = p.Expiry.ToString("dd/MM/yyyy"),
-                               ConNgay = p.DaysLeft
-                           }).ToList();
-            dgvExpiringSoon.DataSource = null;
-            dgvExpiringSoon.Columns.Clear();
-            dgvExpiringSoon.DataSource = exp;
-            dgvExpiringSoon.Columns["Thuoc"].HeaderText = "Thuốc";
-            dgvExpiringSoon.Columns["DanhMuc"].HeaderText = "Danh mục";
-            dgvExpiringSoon.Columns["HanDung"].HeaderText = "Hạn dùng";
-            dgvExpiringSoon.Columns["ConNgay"].HeaderText = "Còn (ngày)";
+            var hetHan = _view.Where(x => x.SapHetHan(threshold))
+                              .OrderBy(x => x.ConLai)
+                              .Select(x => new { x.TenThuoc, x.TenDanhMuc, x.HanSuDung, x.ConLai })
+                              .ToList();
+            dgvHetHan.DataSource = hetHan;
 
-            // Low stock
-            var low = _view.Where(p => p.IsLowStock())
-                           .OrderBy(p => p.Qty)
-                           .Select(p => new
-                           {
-                               Thuoc = p.Name,
-                               DanhMuc = p.CatName,
-                               Ton = p.Qty,
-                               Nguong = p.MinStock
-                           }).ToList();
-            dgvLowStock.DataSource = null;
-            dgvLowStock.Columns.Clear();
-            dgvLowStock.DataSource = low;
-            dgvLowStock.Columns["Thuoc"].HeaderText = "Thuốc";
-            dgvLowStock.Columns["DanhMuc"].HeaderText = "Danh mục";
-            dgvLowStock.Columns["Ton"].HeaderText = "Tồn";
-            dgvLowStock.Columns["Nguong"].HeaderText = "Ngưỡng";
+            var hetHang = _view.Where(x => x.SapHetHang())
+                               .OrderBy(x => x.TonKho)
+                               .Select(x => new { x.TenThuoc, x.TenDanhMuc, x.TonKho, x.NguongToiThieu })
+                               .ToList();
+            dgvHetHang.DataSource = hetHang;
         }
 
-        // ===================== Print =====================
+        // ======================================================
+        // 🔹 IN BÁO CÁO
+        // ======================================================
         void PrintPreview()
         {
-            if (!_view.Any())
-            {
-                MessageBox.Show("Không có dữ liệu để in."); return;
-            }
+            if (!_view.Any()) { MessageBox.Show("Không có dữ liệu để in."); return; }
             printDoc = new PrintDocument();
             printDoc.DocumentName = "Báo cáo tồn kho";
             printDoc.PrintPage += PrintDoc_PrintPage;
@@ -460,77 +310,53 @@ namespace QLNhaThuoc
             prev.ShowDialog();
         }
 
-        int _printPhase = 0; // 0 summary, 1 expiring, 2 low stock
-        int _rowIndex = 0;
+        int phase = 0, row = 0;
         void PrintDoc_PrintPage(object? sender, PrintPageEventArgs e)
         {
             int left = e.MarginBounds.Left, y = e.MarginBounds.Top;
             var title = new Font("Segoe UI", 12, FontStyle.Bold);
             var normal = new Font("Segoe UI", 9);
 
-            if (_printPhase == 0)
+            if (phase == 0)
             {
-                e.Graphics.DrawString("BÁO CÁO TỒN KHO - TỔNG HỢP DANH MỤC", title, Brushes.Black, left, y);
-                y += 26;
-                e.Graphics.DrawString($"Danh mục: {cboCategory.Text} | Cảnh báo hết hạn ≤ {ExpiringDaysThreshold} ngày", normal, Brushes.Black, left, y);
-                y += 20;
-
-                e.Graphics.DrawString("Danh mục | Số SP | Tổng tồn | Sắp hết hạn | Sắp hết hàng", normal, Brushes.Black, left, y);
-                y += 16;
-                e.Graphics.DrawLine(Pens.Black, left, y, e.MarginBounds.Right, y);
-                y += 6;
-
-                var rows = (dgvCatSummary.DataSource as IEnumerable<CatSummaryRow>)?.ToList() ?? new();
-                while (_rowIndex < rows.Count)
+                e.Graphics.DrawString("BÁO CÁO TỒN KHO", title, Brushes.Black, left, y);
+                y += 30;
+                foreach (var r in dgvTongHop.Rows.Cast<DataGridViewRow>())
                 {
-                    var r = rows[_rowIndex];
-                    string line = $"{r.CatName} | {r.SoSanPham} | {r.TongTon} | {r.SapHetHan} | {r.SapHetHang}";
+                    string line = string.Join(" | ", r.Cells.Cast<DataGridViewCell>().Select(c => c.Value?.ToString()));
                     e.Graphics.DrawString(line, normal, Brushes.Black, left, y);
                     y += 18;
                     if (y > e.MarginBounds.Bottom - 20) { e.HasMorePages = true; return; }
-                    _rowIndex++;
                 }
-                _rowIndex = 0; _printPhase = 1; e.HasMorePages = true; return;
+                phase = 1; y = e.MarginBounds.Top; e.HasMorePages = true; return;
             }
 
-            if (_printPhase == 1)
+            if (phase == 1)
             {
-                e.Graphics.DrawString("BÁO CÁO - THUỐC SẮP HẾT HẠN", title, Brushes.Black, left, y);
-                y += 26;
-                var rows = (dgvExpiringSoon.DataSource as IEnumerable<dynamic>)?.ToList() ?? new();
-                e.Graphics.DrawString("Thuốc | Danh mục | Hạn dùng | Còn (ngày)", normal, Brushes.Black, left, y);
-                y += 16; e.Graphics.DrawLine(Pens.Black, left, y, e.MarginBounds.Right, y); y += 6;
-
-                while (_rowIndex < rows.Count)
+                e.Graphics.DrawString("THUỐC SẮP HẾT HẠN", title, Brushes.Black, left, y);
+                y += 30;
+                foreach (var r in dgvHetHan.Rows.Cast<DataGridViewRow>())
                 {
-                    dynamic r = rows[_rowIndex];
-                    string line = $"{r.Thuoc} | {r.DanhMuc} | {r.HanDung} | {r.ConNgay}";
+                    string line = string.Join(" | ", r.Cells.Cast<DataGridViewCell>().Select(c => c.Value?.ToString()));
                     e.Graphics.DrawString(line, normal, Brushes.Black, left, y);
                     y += 18;
                     if (y > e.MarginBounds.Bottom - 20) { e.HasMorePages = true; return; }
-                    _rowIndex++;
                 }
-                _rowIndex = 0; _printPhase = 2; e.HasMorePages = true; return;
+                phase = 2; y = e.MarginBounds.Top; e.HasMorePages = true; return;
             }
 
-            if (_printPhase == 2)
+            if (phase == 2)
             {
-                e.Graphics.DrawString("BÁO CÁO - THUỐC SẮP HẾT HÀNG", title, Brushes.Black, left, y);
-                y += 26;
-                var rows = (dgvLowStock.DataSource as IEnumerable<dynamic>)?.ToList() ?? new();
-                e.Graphics.DrawString("Thuốc | Danh mục | Tồn | Ngưỡng", normal, Brushes.Black, left, y);
-                y += 16; e.Graphics.DrawLine(Pens.Black, left, y, e.MarginBounds.Right, y); y += 6;
-
-                while (_rowIndex < rows.Count)
+                e.Graphics.DrawString("THUỐC SẮP HẾT HÀNG", title, Brushes.Black, left, y);
+                y += 30;
+                foreach (var r in dgvHetHang.Rows.Cast<DataGridViewRow>())
                 {
-                    dynamic r = rows[_rowIndex];
-                    string line = $"{r.Thuoc} | {r.DanhMuc} | {r.Ton} | {r.Nguong}";
+                    string line = string.Join(" | ", r.Cells.Cast<DataGridViewCell>().Select(c => c.Value?.ToString()));
                     e.Graphics.DrawString(line, normal, Brushes.Black, left, y);
                     y += 18;
                     if (y > e.MarginBounds.Bottom - 20) { e.HasMorePages = true; return; }
-                    _rowIndex++;
                 }
-                _rowIndex = 0; _printPhase = 0; e.HasMorePages = false; return;
+                phase = 0; e.HasMorePages = false; return;
             }
         }
     }
