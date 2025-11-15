@@ -4,6 +4,7 @@ using DevExpress.UserSkins;
 using System;
 using System.Configuration;
 using System.Data.SqlClient;
+using System.Text;
 using System.Windows.Forms;
 
 namespace QLNhaThuoc
@@ -16,6 +17,11 @@ namespace QLNhaThuoc
         [STAThread]
         static void Main()
         {
+            // ======== 🔧 CẤU HÌNH UTF-8 CHO TIẾNG VIỆT ========
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            // Console encoding removed - not needed for Windows Forms applications
+            // Windows Forms handles text encoding automatically
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
