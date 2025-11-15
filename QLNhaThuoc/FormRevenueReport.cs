@@ -21,7 +21,7 @@ namespace QLNhaThuoc
             public string Drug { get; set; } = "";
             public int Qty { get; set; }
             public decimal UnitPrice { get; set; }
-            public decimal Amount => Qty * UnitPrice;
+            public decimal Amount { get; set; }
         }
 
         public class SaleOrder
@@ -126,7 +126,8 @@ namespace QLNhaThuoc
                     {
                         Drug = rd["TenThuoc"].ToString() ?? "",
                         Qty = Convert.ToInt32(rd["SoLuong"]),
-                        UnitPrice = Convert.ToDecimal(rd["DonGia"])
+                        UnitPrice = Convert.ToDecimal(rd["DonGia"]),
+                        Amount = Convert.ToDecimal(rd["ThanhTien"])
                     });
                 }
 
@@ -157,9 +158,10 @@ namespace QLNhaThuoc
             kpiLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             kpiLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
 
-            var lblTitle = new Label { Text = "Tổng doanh thu", Font = new Font("Segoe UI", 10, FontStyle.Bold), Dock = DockStyle.Left };
+            var lblTitle = new Label { Text = "Tổng doanh thu", Font = new Font("Segoe UI", 10, FontStyle.Bold), Dock = DockStyle.Left, AutoSize = true };
             lblTotalValue.Font = new Font("Segoe UI", 18, FontStyle.Bold);
             lblTotalValue.Dock = DockStyle.Right;
+            lblTotalValue.AutoSize = true;
             lblTotalValue.Text = "—";
 
             kpiLayout.Controls.Add(lblTitle, 0, 0);
@@ -267,11 +269,35 @@ namespace QLNhaThuoc
             }).OrderByDescending(x => x.Ngay).ToList();
 
             dgv.DataSource = flat;
-            dgv.Columns["Ngay"].DefaultCellStyle.Format = "dd/MM/yyyy";
-            dgv.Columns["DoanhThu"].DefaultCellStyle.Format = "N0";
+  
+            // Set Vietnamese column headers
+            dgv.Columns["Ngay"].HeaderText = "Ngày";
+   dgv.Columns["SoHD"].HeaderText = "Số HĐ";
+ dgv.Columns["KhachHang"].HeaderText = "Khách Hàng";
+ dgv.Columns["SoMatHang"].HeaderText = "Số Mặt Hàng";
+      dgv.Columns["TongSL"].HeaderText = "Tổng SL";
+            dgv.Columns["DoanhThu"].HeaderText = "Doanh Thu";
+         
+    dgv.Columns["Ngay"].DefaultCellStyle.Format = "dd/MM/yyyy";
+  dgv.Columns["DoanhThu"].DefaultCellStyle.Format = "N0";
 
-            lblTotalValue.Text = $"{_view.Sum(x => x.DoanhThu):N0} ₫";
-            UpdateCharts();
+  lblTotalValue.Text = $"{_view.Sum(x => x.DoanhThu):N0} VNĐ";
+            
+   // Debug: kiểm tra giá trị thực
+      decimal total = _view.Sum(x => x.DoanhThu);
+System.Diagnostics.Debug.WriteLine($"Total revenue: {total}");
+         if (_view.Any())
+            {
+       var first = _view.First();
+                System.Diagnostics.Debug.WriteLine($"First order: {first.SoHD}, Amount: {first.DoanhThu}, Items: {first.Items.Count}");
+           if (first.Items.Any())
+   {
+            var firstItem = first.Items.First();
+         System.Diagnostics.Debug.WriteLine($"First item: {firstItem.Drug}, Qty: {firstItem.Qty}, Price: {firstItem.UnitPrice}, Amount: {firstItem.Amount}");
+ }
+            }
+     
+      UpdateCharts();
         }
 
         void UpdateCharts()
@@ -342,7 +368,7 @@ namespace QLNhaThuoc
             y += 24;
             e.Graphics.DrawString($"Từ {dtFrom.Value:dd/MM/yyyy} đến {dtTo.Value:dd/MM/yyyy}", normal, Brushes.Black, left, y);
             y += 20;
-            e.Graphics.DrawString($"Tổng doanh thu: {_view.Sum(x => x.DoanhThu):N0} ₫", normal, Brushes.Black, left, y);
+            e.Graphics.DrawString($"Tổng doanh thu: {_view.Sum(x => x.DoanhThu):N0} VNĐ", normal, Brushes.Black, left, y);
             y += 24;
             e.Graphics.DrawString("Ngày | Hóa đơn | Khách hàng | Doanh thu", normal, Brushes.Black, left, y);
             y += 16;
@@ -351,7 +377,7 @@ namespace QLNhaThuoc
             while (_printIndex < flat.Count)
             {
                 var r = flat[_printIndex];
-                string line = $"{r.Ngay:dd/MM/yyyy} | {r.SoHD} | {r.Customer} | {r.DoanhThu:N0} ₫";
+                string line = $"{r.Ngay:dd/MM/yyyy} | {r.SoHD} | {r.Customer} | {r.DoanhThu:N0} VNĐ";
                 e.Graphics.DrawString(line, normal, Brushes.Black, left, y);
                 y += 18;
 

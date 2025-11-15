@@ -43,7 +43,6 @@ namespace QLNhaThuoc
 
         private readonly Panel rightPanel = new() { Dock = DockStyle.Fill, Padding = new Padding(12) };
         private readonly Button btnAdd = new() { Text = "+ Thêm thuốc", Height = 34, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(47, 111, 237), ForeColor = Color.White };
-        private readonly Button btnInventory = new() { Text = "Tạo phiếu kiểm kê", Height = 34, Width = 160, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(47, 111, 237), ForeColor = Color.White };
 
         private readonly TextBox txtSearch = new() { PlaceholderText = "Nhập tên hoặc mã thuốc..." };
         private readonly Button btnSearch = new() { Text = "Tra cứu", Width = 90, Height = 28 };
@@ -56,7 +55,10 @@ namespace QLNhaThuoc
             ReadOnly = true,
             AllowUserToAddRows = false,
             SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-            RowHeadersVisible = false
+            RowHeadersVisible = false,
+            ColumnHeadersVisible = true,// ✅ Bật hiển thị header
+            ColumnHeadersHeight = 40,     // ✅ Set chiều cao header
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing
         };
 
         public FormWarehouse()
@@ -167,11 +169,10 @@ namespace QLNhaThuoc
         private void BuildRight()
         {
             var topBar = new Panel { Dock = DockStyle.Top, Height = 46 };
-            topBar.Controls.AddRange(new Control[] { btnAdd, btnInventory });
+            topBar.Controls.AddRange(new Control[] { btnAdd });
             void LayoutTopButtons()
             {
-                btnInventory.Location = new Point(topBar.Width - btnInventory.Width, 6);
-                btnAdd.Location = new Point(btnInventory.Left - 12 - btnAdd.Width, 6);
+            btnAdd.Location = new Point(topBar.Width - btnAdd.Width, 6);
             }
             topBar.Resize += (_, __) => LayoutTopButtons();
             LayoutTopButtons();
@@ -188,9 +189,10 @@ namespace QLNhaThuoc
                 btnSearch.Location = new Point(searchBar.Width - 90, 7);
             };
 
-            rightPanel.Controls.Add(topBar);
-            rightPanel.Controls.Add(searchBar);
-            rightPanel.Controls.Add(dgv);
+            // ✅ QUAN TRỌNG: Add theo thứ tự ngược khi dùng Dock
+            rightPanel.Controls.Add(dgv);   // Fill - Add TRƯỚC
+            rightPanel.Controls.Add(searchBar);   // Top - Add sau
+            rightPanel.Controls.Add(topBar);    // Top - Add cuối
 
             btnAdd.Click += (_, __) => AddThuoc();
             btnSearch.Click += (_, __) => ApplyFilter();
@@ -260,128 +262,277 @@ namespace QLNhaThuoc
             var f = new FormThuocPro();
             if (f.ShowDialog() == DialogResult.OK)
             {
-                var t = f.Value;
-                try
-                {
-                    string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
-                    using SqlConnection con = new(cs);
-                    con.Open();
-
-                    // Insert vào Thuoc
-                    string sql1 = @"INSERT INTO Thuoc(MaThuoc, TenThuoc, HoatChat, DongGoi, GiaBan) 
-                                    VALUES(@MaThuoc, @TenThuoc, @HoatChat, @DongGoi, @GiaBan)";
-                    using SqlCommand cmd1 = new(sql1, con);
-                    cmd1.Parameters.AddWithValue("@MaThuoc", t.MaThuoc);
-                    cmd1.Parameters.AddWithValue("@TenThuoc", t.TenThuoc);
-                    cmd1.Parameters.AddWithValue("@HoatChat", t.HoatChat);
-                    cmd1.Parameters.AddWithValue("@DongGoi", t.DongGoi);
-                    cmd1.Parameters.AddWithValue("@GiaBan", t.GiaBan);
-                    cmd1.ExecuteNonQuery();
-
-                    // Insert vào TonKho
-                    string sql2 = @"INSERT INTO TonKho(MaLoSX, MaThuoc, TonKho, HanSuDung)
-                                    VALUES(@MaLoSX, @MaThuoc, @TonKho, @HanSuDung)";
-                    using SqlCommand cmd2 = new(sql2, con);
-                    cmd2.Parameters.AddWithValue("@MaLoSX", t.MaLoSX);
-                    cmd2.Parameters.AddWithValue("@MaThuoc", t.MaThuoc);
-                    cmd2.Parameters.AddWithValue("@TonKho", t.TonKho);
-                    cmd2.Parameters.AddWithValue("@HanSuDung", t.HanSuDung);
-                    cmd2.ExecuteNonQuery();
-
-                    MessageBox.Show("✅ Đã thêm thuốc mới vào hệ thống!", "Thành công",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadDataFromDatabase();
-                    ApplyFilter();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("❌ Lỗi khi thêm thuốc: " + ex.Message);
-                }
-            }
+                 // Form đã tự lưu vào database, chỉ cần refresh lại
+                LoadDataFromDatabase();
+                ApplyFilter();
+ }
         }
     }
 
-    // ========== POPUP FORM ==========
+    // ========== POPUP FORM THÊM THUỐC ==========
     public class FormThuocPro : Form
     {
         public FormWarehouse.Thuoc Value { get; private set; } = new();
+        
+        // UI Controls
         TextBox txtMa = new(), txtTen = new(), txtHoat = new(), txtDongGoi = new(), txtLo = new();
-        NumericUpDown nudGia = new(), nudTon = new();
-        DateTimePicker dtHSD = new();
+     NumericUpDown nudGia = new() { Maximum = 100000000, ThousandsSeparator = true, TextAlign = HorizontalAlignment.Right };
+        NumericUpDown nudTon = new() { Maximum = 1000000, ThousandsSeparator = true };
+   DateTimePicker dtHSD = new() { Format = DateTimePickerFormat.Custom, CustomFormat = "dd/MM/yyyy" };
+   ComboBox cbDonVi = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+        ComboBox cbNCC = new() { DropDownStyle = ComboBoxStyle.DropDownList };
 
-        public FormThuocPro()
+        // Dictionaries to map tên -> mã
+        Dictionary<string, string> donViDict = new();
+      Dictionary<string, string> nccDict = new();
+
+   public FormThuocPro()
         {
             Text = "Thêm thuốc mới";
-            StartPosition = FormStartPosition.CenterParent;
-            Size = new Size(500, 500);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            Font = new Font("Segoe UI", 9F);
+    StartPosition = FormStartPosition.CenterParent;
+Size = new Size(550, 600);
+   FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            Font = new Font("Segoe UI", 9.5F);
+    BackColor = Color.White;
 
-            var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 2 };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-
-            void Row(string label, Control c)
-            {
-                table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left });
-                table.Controls.Add(c);
-            }
-
-            dtHSD.Format = DateTimePickerFormat.Custom;
-            dtHSD.CustomFormat = "dd/MM/yyyy";
-            nudGia.Maximum = 100000000;
-            nudGia.ThousandsSeparator = true;
-            nudGia.TextAlign = HorizontalAlignment.Right;
-            nudTon.Maximum = 1000000;
-            nudTon.ThousandsSeparator = true;
-
-            Row("Mã thuốc:", txtMa);
-            Row("Tên thuốc:", txtTen);
-            Row("Hoạt chất:", txtHoat);
-            Row("Đóng gói:", txtDongGoi);
-            Row("Giá bán:", nudGia);
-            Row("Lô SX:", txtLo);
-            Row("Hạn SD:", dtHSD);
-            Row("Tồn kho:", nudTon);
-            Controls.Add(table);
-
-            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 60, Padding = new Padding(10) };
-            var btnOK = new Button { Text = "Lưu", Width = 100, Height = 36, BackColor = Color.FromArgb(47, 111, 237), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
-            var btnCancel = new Button { Text = "Hủy", Width = 90, Height = 36 };
-            btnOK.Click += (s, e) =>
-            {
-                if (TryCollect(out var t))
-                {
-                    Value = t;
-                    DialogResult = DialogResult.OK;
-                }
-            };
-            btnCancel.Click += (s, e) => DialogResult = DialogResult.Cancel;
-            footer.Controls.AddRange(new Control[] { btnOK, btnCancel });
-            Controls.Add(footer);
+    LoadComboData();
+       BuildUI();
         }
 
-        private bool TryCollect(out FormWarehouse.Thuoc t)
+        private void LoadComboData()
         {
-            t = new FormWarehouse.Thuoc
-            {
-                MaThuoc = txtMa.Text.Trim(),
-                TenThuoc = txtTen.Text.Trim(),
-                HoatChat = txtHoat.Text.Trim(),
-                DongGoi = txtDongGoi.Text.Trim(),
-                GiaBan = nudGia.Value,
-                MaLoSX = txtLo.Text.Trim(),
-                HanSuDung = dtHSD.Value.Date,
-                TonKho = (int)nudTon.Value
-            };
+            try
+        {
+    string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
+          using SqlConnection con = new(cs);
+              con.Open();
 
-            if (string.IsNullOrEmpty(t.MaThuoc) || string.IsNullOrEmpty(t.TenThuoc))
+    // Load Đơn vị tính
+   string sql1 = "SELECT MaDonViTinh, TenDonViTinh FROM DonViTinh ORDER BY TenDonViTinh";
+   using SqlCommand cmd1 = new(sql1, con);
+                using SqlDataReader rd1 = cmd1.ExecuteReader();
+       cbDonVi.Items.Clear();
+     donViDict.Clear();
+                while (rd1.Read())
+         {
+     string ma = rd1["MaDonViTinh"].ToString();
+    string ten = rd1["TenDonViTinh"].ToString();
+     cbDonVi.Items.Add(ten);
+        donViDict[ten] = ma;
+      }
+ rd1.Close();
+
+                // Load Nhà cung cấp
+                string sql2 = "SELECT MaNCC, TenNCC FROM NhaCungCap ORDER BY TenNCC";
+      using SqlCommand cmd2 = new(sql2, con);
+using SqlDataReader rd2 = cmd2.ExecuteReader();
+        cbNCC.Items.Clear();
+            nccDict.Clear();
+         while (rd2.Read())
+                {
+ string ma = rd2["MaNCC"].ToString();
+         string ten = rd2["TenNCC"].ToString();
+           cbNCC.Items.Add(ten);
+         nccDict[ten] = ma;
+          }
+
+     if (cbDonVi.Items.Count > 0) cbDonVi.SelectedIndex = 0;
+    if (cbNCC.Items.Count > 0) cbNCC.SelectedIndex = 0;
+  }
+ catch (Exception ex)
             {
-                MessageBox.Show("Vui lòng nhập đầy đủ Mã thuốc và Tên thuốc.",
-                    "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return false;
+  MessageBox.Show("❌ Lỗi tải dữ liệu: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+       }
+    }
+
+        private void BuildUI()
+ {
+  var mainPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(25, 20, 25, 20) };
+      
+  var table = new TableLayoutPanel 
+     { 
+          Dock = DockStyle.Fill, 
+         ColumnCount = 2,
+                AutoSize = true,
+           CellBorderStyle = TableLayoutPanelCellBorderStyle.None
+            };
+         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        void Row(string label, Control c)
+            {
+            var lbl = new Label 
+          { 
+       Text = label, 
+          AutoSize = true, 
+    Anchor = AnchorStyles.Left,
+          Font = new Font("Segoe UI", 9.5F, FontStyle.Regular),
+   ForeColor = Color.FromArgb(64, 64, 64),
+         Margin = new Padding(0, 10, 0, 0)
+          };
+         c.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+       c.Margin = new Padding(0, 8, 0, 0);
+     c.Font = new Font("Segoe UI", 9.5F);
+      if (c is TextBox || c is ComboBox)
+      {
+        c.Height = 32;
+          }
+          table.Controls.Add(lbl);
+                table.Controls.Add(c);
+     }
+
+            dtHSD.Value = DateTime.Today;
+     
+         Row("Mã thuốc:", txtMa);
+       Row("Tên thuốc:", txtTen);
+   Row("Hoạt chất:", txtHoat);
+            Row("Đóng gói:", txtDongGoi);
+   Row("Đơn vị tính:", cbDonVi);
+  Row("Nhà cung cấp:", cbNCC);
+        Row("Giá bán (VNĐ):", nudGia);
+            Row("Lô SX:", txtLo);
+ Row("Hạn sử dụng:", dtHSD);
+            Row("Tồn kho:", nudTon);
+
+mainPanel.Controls.Add(table);
+            Controls.Add(mainPanel);
+
+ // Footer buttons
+   var footer = new Panel { Dock = DockStyle.Bottom, Height = 70, BackColor = Color.FromArgb(245, 245, 245) };
+  var btnLuu = new Button 
+        { 
+    Text = "Lưu", 
+     Width = 110, 
+          Height = 38,
+BackColor = Color.FromArgb(47, 111, 237),
+      ForeColor = Color.White,
+             FlatStyle = FlatStyle.Flat,
+    Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+          };
+     btnLuu.FlatAppearance.BorderSize = 0;
+            
+         var btnHuy = new Button 
+     { 
+         Text = "Hủy", 
+    Width = 100, 
+   Height = 38,
+  BackColor = Color.White,
+          ForeColor = Color.FromArgb(100, 100, 100),
+                FlatStyle = FlatStyle.Flat,
+      Font = new Font("Segoe UI", 10F),
+     Cursor = Cursors.Hand
+ };
+      btnHuy.FlatAppearance.BorderColor = Color.FromArgb(200, 200, 200);
+
+  btnLuu.Location = new Point(footer.Width - btnLuu.Width - btnHuy.Width - 30, 16);
+            btnHuy.Location = new Point(footer.Width - btnHuy.Width - 15, 16);
+            
+            footer.Resize += (s, e) =>
+            {
+              btnLuu.Location = new Point(footer.Width - btnLuu.Width - btnHuy.Width - 30, 16);
+        btnHuy.Location = new Point(footer.Width - btnHuy.Width - 15, 16);
+    };
+
+    btnLuu.Click += (s, e) =>
+       {
+     if (ValidateAndSave())
+    {
+        DialogResult = DialogResult.OK;
+    }
+      };
+        btnHuy.Click += (s, e) => DialogResult = DialogResult.Cancel;
+
+      footer.Controls.AddRange(new Control[] { btnLuu, btnHuy });
+ Controls.Add(footer);
+        }
+
+      private bool ValidateAndSave()
+     {
+  if (string.IsNullOrWhiteSpace(txtMa.Text))
+     {
+        MessageBox.Show("⚠️ Vui lòng nhập Mã thuốc!", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+          txtMa.Focus();
+  return false;
             }
-            return true;
+    if (string.IsNullOrWhiteSpace(txtTen.Text))
+    {
+      MessageBox.Show("⚠️ Vui lòng nhập Tên thuốc!", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+   txtTen.Focus();
+         return false;
+  }
+     if (cbDonVi.SelectedIndex < 0)
+    {
+                MessageBox.Show("⚠️ Vui lòng chọn Đơn vị tính!", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+       return false;
+            }
+            if (cbNCC.SelectedIndex < 0)
+  {
+       MessageBox.Show("⚠️ Vui lòng chọn Nhà cung cấp!", "Thiếu thông tin", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    return false;
+            }
+
+            try
+      {
+     string cs = ConfigurationManager.ConnectionStrings["Db"].ConnectionString;
+            using SqlConnection con = new(cs);
+                con.Open();
+
+         // Lấy mã đơn vị và nhà cung cấp
+         string maDonVi = donViDict[cbDonVi.SelectedItem.ToString()];
+   string maNCC = nccDict[cbNCC.SelectedItem.ToString()];
+
+     // Kiểm tra mã thuốc đã tồn tại chưa
+     string checkSql = "SELECT COUNT(*) FROM Thuoc WHERE MaThuoc = @MaThuoc";
+         using SqlCommand checkCmd = new(checkSql, con);
+     checkCmd.Parameters.AddWithValue("@MaThuoc", txtMa.Text.Trim());
+            int count = (int)checkCmd.ExecuteScalar();
+   if (count > 0)
+        {
+          MessageBox.Show("❌ Mã thuốc đã tồn tại!", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+          txtMa.Focus();
+          return false;
+    }
+
+ // Insert vào bảng Thuoc
+      string sqlThuoc = @"
+    INSERT INTO Thuoc(MaThuoc, TenThuoc, HoatChat, DongGoi, MaDonViTinh, MaNCC, GiaBan)
+      VALUES(@MaThuoc, @TenThuoc, @HoatChat, @DongGoi, @MaDonViTinh, @MaNCC, @GiaBan)";
+     
+    using SqlCommand cmdThuoc = new(sqlThuoc, con);
+              cmdThuoc.Parameters.AddWithValue("@MaThuoc", txtMa.Text.Trim());
+    cmdThuoc.Parameters.AddWithValue("@TenThuoc", txtTen.Text.Trim());
+  cmdThuoc.Parameters.AddWithValue("@HoatChat", txtHoat.Text.Trim());
+        cmdThuoc.Parameters.AddWithValue("@DongGoi", txtDongGoi.Text.Trim());
+      cmdThuoc.Parameters.AddWithValue("@MaDonViTinh", maDonVi);
+        cmdThuoc.Parameters.AddWithValue("@MaNCC", maNCC);
+cmdThuoc.Parameters.AddWithValue("@GiaBan", nudGia.Value);
+       cmdThuoc.ExecuteNonQuery();
+
+     // Insert vào bảng TonKho
+             string sqlKho = @"
+          INSERT INTO TonKho(MaLoSX, MaThuoc, TonKho, HanSuDung)
+           VALUES(@MaLoSX, @MaThuoc, @TonKho, @HanSuDung)";
+           
+    using SqlCommand cmdKho = new(sqlKho, con);
+          cmdKho.Parameters.AddWithValue("@MaLoSX", txtLo.Text.Trim());
+         cmdKho.Parameters.AddWithValue("@MaThuoc", txtMa.Text.Trim());
+           cmdKho.Parameters.AddWithValue("@TonKho", (int)nudTon.Value);
+      cmdKho.Parameters.AddWithValue("@HanSuDung", dtHSD.Value.Date);
+     cmdKho.ExecuteNonQuery();
+
+ MessageBox.Show("✅ Thêm thuốc mới thành công!", "Thành công", 
+          MessageBoxButtons.OK, MessageBoxIcon.Information);
+     return true;
+    }
+          catch (Exception ex)
+            {
+   MessageBox.Show("❌ Lỗi khi lưu: " + ex.Message, "Lỗi", 
+          MessageBoxButtons.OK, MessageBoxIcon.Error);
+   return false;
+            }
         }
     }
 }
