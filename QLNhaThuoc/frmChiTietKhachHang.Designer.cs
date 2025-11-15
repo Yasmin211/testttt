@@ -93,7 +93,7 @@ this.panelHeader.TabIndex = 0;
    this.lblDoanhThu.Size = new System.Drawing.Size(45, 20);
     this.lblDoanhThu.TabIndex = 9;
           this.lblDoanhThu.Text = "0 ?";
-          // 
+            // 
      // label5
     // 
    this.label5.AutoSize = true;
