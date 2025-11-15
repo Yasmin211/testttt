@@ -300,6 +300,18 @@
   <data name="XemChiTiet.Width" type="System.Int32, mscorlib">
     <value>200</value>
   </data>
+  <metadata name="XemChiTietKH.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="XemChiTietKH.HeaderText" xml:space="preserve">
+    <value>Chi Tiết</value>
+  </data>
+  <data name="XemChiTietKH.MinimumWidth" type="System.Int32, mscorlib">
+    <value>6</value>
+  </data>
+  <data name="XemChiTietKH.Width" type="System.Int32, mscorlib">
+    <value>150</value>
+  </data>
   <data name="tblDSHD.Location" type="System.Drawing.Point, System.Drawing">
     <value>819, 170</value>
   </data>
@@ -408,11 +420,23 @@
   <data name="maKH.Width" type="System.Int32, mscorlib">
     <value>170</value>
   </data>
+  <metadata name="tenKH.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="tenKH.HeaderText" xml:space="preserve">
+    <value>Tên Khách hàng</value>
+  </data>
+  <data name="tenKH.MinimumWidth" type="System.Int32, mscorlib">
+    <value>6</value>
+  </data>
+  <data name="tenKH.Width" type="System.Int32, mscorlib">
+    <value>200</value>
+  </data>
   <metadata name="sdtKH.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
   <data name="sdtKH.HeaderText" xml:space="preserve">
-    <value>Số điện thoại</value>
+    <value>SĐT KH</value>
   </data>
   <data name="sdtKH.MinimumWidth" type="System.Int32, mscorlib">
     <value>6</value>
@@ -443,6 +467,18 @@
   </data>
   <data name="DoanhThu.Width" type="System.Int32, mscorlib">
     <value>125</value>
+  </data>
+  <metadata name="XemChiTietKH.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="XemChiTietKH.HeaderText" xml:space="preserve">
+    <value>Chi Tiết</value>
+  </data>
+  <data name="XemChiTietKH.MinimumWidth" type="System.Int32, mscorlib">
+    <value>6</value>
+  </data>
+  <data name="XemChiTietKH.Width" type="System.Int32, mscorlib">
+    <value>150</value>
   </data>
   <data name="tblDsKhachHang.Location" type="System.Drawing.Point, System.Drawing">
     <value>66, 170</value>

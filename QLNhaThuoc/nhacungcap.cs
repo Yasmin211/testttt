@@ -214,7 +214,6 @@ namespace QLNhaThuoc
             btnloc.Text = "Lọc";
             btnloc.AllowFocus = false;
 
-            btnloc.ImageOptions.SvgImage = Properties.Resources.filter;
             btnloc.ImageOptions.SvgImageSize = new Size(12, 12);
             btnloc.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.LeftCenter;
             btnloc.ImageOptions.ImageToTextIndent = 10;
@@ -244,8 +243,8 @@ namespace QLNhaThuoc
                 btnloc.Appearance.BackColor = Color.FromArgb(240, 240, 240);
             };
             btnloctheo.AllowFocus = false;
-            btnloctheo.ImageOptions.SvgImage = Properties.Resources.settings;
-            btnloctheo.ImageOptions.SvgImageSize = new Size(12, 12);
+            // btnloctheo.ImageOptions.SvgImage = Properties.Resources.settings; // Commented out - Resources file missing
+  btnloctheo.ImageOptions.SvgImageSize = new Size(12, 12);
             btnloctheo.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
             btnloctheo.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
             btnloctheo.Text = "";

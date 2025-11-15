@@ -1,4 +1,4 @@
-﻿namespace NhaThuoc_QLBH
+﻿namespace QLNhaThuoc
 {
     partial class frmHoaDonBH
     {

@@ -37,8 +37,12 @@ namespace QLNhaThuoc
                 return; // Dừng chương trình nếu lỗi
             }
 
-            // ======== 🚀 CHẠY FORM CHÍNH SAU KHI KẾT NỐI OK ========
-            Application.Run(new FormWarehouse());
+            // ======== 🚀 MỞ FORM QUẢN LÝ BÁN HÀNG (HOME) ========
+            Application.Run(new Home());
+
+            // ======== 📝 GHI CHÚ ========
+            // Nếu muốn mở FormWarehouse (Quản lý kho), đổi thành:
+            // Application.Run(new FormWarehouse());
         }
     }
 }

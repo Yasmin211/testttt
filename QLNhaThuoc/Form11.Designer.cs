@@ -1,4 +1,4 @@
-﻿namespace NhaThuoc_QLBH
+﻿namespace QLNhaThuoc
 {
     partial class Home
     {
@@ -50,9 +50,11 @@
             this.XemChiTiet = new System.Windows.Forms.DataGridViewButtonColumn();
             this.sttKH = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.maKH = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.tenKH = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.sdtKH = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.dcKH = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.DoanhThu = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.XemChiTietKH = new System.Windows.Forms.DataGridViewButtonColumn();
             this.btnSearch = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.tblDSHD)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.tblDsKhachHang)).BeginInit();
@@ -153,9 +155,11 @@
             this.tblDsKhachHang.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] {
             this.sttKH,
             this.maKH,
+            this.tenKH,
             this.sdtKH,
             this.dcKH,
-            this.DoanhThu});
+            this.DoanhThu,
+            this.XemChiTietKH});
             dataGridViewCellStyle5.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleCenter;
             dataGridViewCellStyle5.BackColor = System.Drawing.SystemColors.Window;
             dataGridViewCellStyle5.Font = new System.Drawing.Font("Segoe UI", 10F);
@@ -223,6 +227,12 @@
             resources.ApplyResources(this.maKH, "maKH");
             this.maKH.Name = "maKH";
             // 
+            // tenKH
+            // 
+            resources.ApplyResources(this.tenKH, "tenKH");
+            this.tenKH.Name = "tenKH";
+            this.tenKH.ReadOnly = true;
+            // 
             // sdtKH
             // 
             resources.ApplyResources(this.sdtKH, "sdtKH");
@@ -239,11 +249,18 @@
             this.DoanhThu.Name = "DoanhThu";
             this.DoanhThu.ReadOnly = true;
             // 
+            // XemChiTietKH
+            // 
+            resources.ApplyResources(this.XemChiTietKH, "XemChiTietKH");
+            this.XemChiTietKH.Name = "XemChiTietKH";
+            this.XemChiTietKH.Text = "Xem Chi Tiết";
+            this.XemChiTietKH.UseColumnTextForButtonValue = true;
+            // 
             // btnSearch
             // 
             resources.ApplyResources(this.btnSearch, "btnSearch");
             this.btnSearch.Cursor = System.Windows.Forms.Cursors.Default;
-            this.btnSearch.Image = global::NhaThuoc_QLBH.Properties.Resources._5402443_search_find_magnifier_magnifying_magnifying_glass_icon1;
+            // this.btnSearch.Image = global::QLNhaThuoc.Properties.Resources._5402443_search_find_magnifier_magnifying_magnifying_glass_icon1;
             this.btnSearch.Name = "btnSearch";
             this.btnSearch.UseVisualStyleBackColor = true;
             // 
@@ -288,9 +305,11 @@
         private System.Windows.Forms.DataGridViewButtonColumn XemChiTiet;
         private System.Windows.Forms.DataGridViewTextBoxColumn sttKH;
         private System.Windows.Forms.DataGridViewTextBoxColumn maKH;
+        private System.Windows.Forms.DataGridViewTextBoxColumn tenKH;
         private System.Windows.Forms.DataGridViewTextBoxColumn sdtKH;
         private System.Windows.Forms.DataGridViewTextBoxColumn dcKH;
         private System.Windows.Forms.DataGridViewTextBoxColumn DoanhThu;
+        private System.Windows.Forms.DataGridViewButtonColumn XemChiTietKH;
     }
 }
 

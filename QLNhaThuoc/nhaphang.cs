@@ -234,10 +234,10 @@ namespace QLNhaThuoc
             btnloc.Text = "Lọc";
             btnloc.AllowFocus = false;
 
-            btnloc.ImageOptions.SvgImage = Properties.Resources.filter;
+            // btnloc.ImageOptions.SvgImage = Properties.Resources.filter; // Commented out - Resources file missing
             btnloc.ImageOptions.SvgImageSize = new Size(12, 12);
             btnloc.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.LeftCenter;
-            btnloc.ImageOptions.ImageToTextIndent = 10;
+    btnloc.ImageOptions.ImageToTextIndent = 10;
 
             btnloc.Appearance.BackColor = Color.White;
             btnloc.Appearance.ForeColor = Color.Black;
@@ -266,7 +266,7 @@ namespace QLNhaThuoc
 
             //btn tải lại
             btntailai.AllowFocus = false;
-            btntailai.ImageOptions.SvgImage = Properties.Resources.refresh;
+            // btntailai.ImageOptions.SvgImage = Properties.Resources.refresh; // Commented out - Resources file missing
             btntailai.ImageOptions.SvgImageSize = new Size(12, 12);
             btntailai.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
             btntailai.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
@@ -291,7 +291,7 @@ namespace QLNhaThuoc
             };
             //nút xuất
             btnxuat.AllowFocus = false;
-            btnxuat.ImageOptions.SvgImage = Properties.Resources.excel;
+            // btnxuat.ImageOptions.SvgImage = Properties.Resources.excel; // Commented out - Resources file missing
             btnxuat.ImageOptions.SvgImageSize = new Size(12, 12);
             btnxuat.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
             btnxuat.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
@@ -316,11 +316,12 @@ namespace QLNhaThuoc
             };
             //nút cài đặt
             btncaidat.AllowFocus = false;
-            btncaidat.ImageOptions.SvgImage = Properties.Resources.settings;
+            // btncaidat.ImageOptions.SvgImage = Properties.Resources.settings; // Commented out - Resources file missing
             btncaidat.ImageOptions.SvgImageSize = new Size(12, 12);
             btncaidat.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
             btncaidat.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
-            btncaidat.Text = "";
+    btncaidat.Text = "";
+
             //màu khi di chuột
             btncaidat.MouseEnter += (s, e) =>
             {
@@ -341,29 +342,12 @@ namespace QLNhaThuoc
             };
             //btnloctheo
             btnloctheo.AllowFocus = false;
-            btnloctheo.ImageOptions.SvgImage = Properties.Resources.settings;
-            btnloctheo.ImageOptions.SvgImageSize = new Size(12, 12);
-            btnloctheo.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
-            btnloctheo.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
-            btnloctheo.Text = "";
-            //màu khi di chuột
-            btnloctheo.MouseEnter += (s, e) =>
-            {
-                btnloctheo.Appearance.BackColor = Color.FromArgb(240, 240, 240);
-            };
-            btnloctheo.MouseLeave += (s, e) =>
-            {
-                btnloctheo.Appearance.BackColor = Color.White;
-            };
-            //màu khi nhấn
-            btnloctheo.MouseDown += (s, e) =>
-            {
-                btnloctheo.Appearance.BackColor = Color.FromArgb(220, 220, 220);
-            };
-            btnloctheo.MouseUp += (s, e) =>
-            {
-                btnloctheo.Appearance.BackColor = Color.FromArgb(240, 240, 240);
-            };
+     // btnloctheo.ImageOptions.SvgImage = Properties.Resources.settings; // Commented out - Resources file missing
+        btnloctheo.ImageOptions.SvgImageSize = new Size(12, 12);
+    btnloctheo.ImageOptions.ImageToTextAlignment = DevExpress.XtraEditors.ImageAlignToText.None;
+  btnloctheo.ImageOptions.Location = DevExpress.XtraEditors.ImageLocation.MiddleCenter;
+btnloctheo.Text = "";
+
 
             //bo góc + viền
             BoGocVaVien(btnloc, 12, Color.DarkGray, 1);
